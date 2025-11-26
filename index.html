@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧文旅 V0.9.5 - 全功能融合版</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #333; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; background: #eef2f5; transition: background 1s; }
+
+        /* --- UI 面板 --- */
+        #ui-panel {
+            position: absolute; top: 0; left: 0; height: 100vh; width: 380px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; z-index: 10;
+            border-right: 1px solid #ddd;
+        }
+        .panel-header { padding: 20px; background: #fff; border-bottom: 3px solid #3498db; transition: border-color 0.5s; }
+        .panel-header h2 { margin: 0; font-size: 22px; color: #2c3e50; }
+        .panel-header p { margin: 5px 0 0; font-size: 12px; color: #7f8c8d; }
+
+        /* 通用 Section 样式 */
+        .section { padding: 12px 15px; border-bottom: 1px solid #eee; }
+        .section-title { font-size: 12px; font-weight: bold; color: #555; margin-bottom: 8px; display: block; }
+
+        /* 1. 天气控制区 (V0.8) */
+        .weather-btn-group { display: flex; gap: 5px; }
+        .weather-btn {
+            flex: 1; padding: 8px; border: 1px solid #ddd; background: #f8f9fa;
+            border-radius: 6px; cursor: pointer; font-size: 12px; transition: 0.3s;
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+        .weather-btn:hover { background: #e9ecef; }
+        .weather-btn.active { background: #eaf6ff; border-color: #3498db; color: #3498db; font-weight: bold; }
+        .weather-btn.active-hot { background: #fff5e6; border-color: #e67e22; color: #e67e22; }
+        .weather-btn.active-rain { background: #e6f0fa; border-color: #2980b9; color: #2980b9; }
+
+        /* 2. 无障碍控制区 (V0.8) */
+        .access-section { background: #e8f6f3; border-bottom: 1px solid #d1f2eb; }
+        .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .toggle-label { font-size: 13px; font-weight: bold; color: #16a085; display: flex; align-items: center; gap: 5px; }
+        
+        /* 开关样式 */
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #16a085; }
+        input:checked + .slider:before { transform: translateX(14px); }
+        
+        .fault-btn { 
+            width: 100%; padding: 6px; background: #fff; border: 1px solid #e74c3c; color: #e74c3c; 
+            border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s; 
+        }
+        .fault-btn.active { background: #e74c3c; color: white; }
+
+        /* 3. 客流调控区 (V0.9 新增) */
+        .crowd-section { background: #fff8f0; border-bottom: 1px solid #ffeeba; }
+        .crowd-ctrl-row { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; }
+        .surge-btn {
+            flex: 1; padding: 6px; background: #e67e22; color: white; border: none; border-radius: 4px;
+            font-size: 12px; cursor: pointer; font-weight: bold; transition: 0.2s;
+        }
+        .surge-btn:hover { background: #d35400; }
+        .surge-btn.active { background: #c0392b; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+
+        .monitor-bar { height: 6px; background: #ddd; border-radius: 3px; overflow: hidden; margin-top: 5px; }
+        .monitor-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.5s, background 0.5s; }
+        
+        .divert-control { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ccc; }
+        .divert-control.show { display: block; }
+
+        /* 4. 列表区 */
+        .list-header { padding: 8px 15px; font-size: 12px; font-weight: bold; color: #666; background: #eee; display: flex; justify-content: space-between; }
+        .spots-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
+        
+        .spot-item {
+            display: flex; align-items: center; padding: 10px; margin-bottom: 8px;
+            background: white; border-radius: 8px; border: 1px solid #eee; transition: 0.2s;
+            position: relative;
+        }
+        .spot-item:hover { border-color: #3498db; transform: translateY(-1px); }
+        .spot-item.in-route { border-left: 5px solid #3498db; background: #f0f8ff; }
+        .spot-item.disabled { opacity: 0.5; background: #f4f4f4; pointer-events: none; filter: grayscale(100%); }
+        .spot-item.congested { border-color: #e74c3c; background: #fdedec; } /* 拥堵样式 */
+
+        .spot-checkbox { margin-right: 10px; transform: scale(1.2); cursor: pointer; accent-color: #3498db; }
+        .spot-content { flex: 1; cursor: pointer; }
+        .spot-name { font-weight: bold; font-size: 14px; color: #2c3e50; }
+        .spot-meta { font-size: 11px; color: #7f8c8d; margin-top: 3px; display: flex; gap: 5px; align-items: center; flex-wrap: wrap;}
+        
+        .badge { padding: 1px 4px; border-radius: 3px; font-size: 10px; color: white; font-weight: bold;}
+        .badge-indoor { background: #8e44ad; }
+        .badge-outdoor { background: #e67e22; }
+        .badge-closed { background: #c0392b; }
+        .badge-stairs { background: #7f8c8d; }
+        .badge-elevator { background: #3498db; }
+        .badge-queue { background: #e74c3c; animation: blink 2s infinite; }
+        @keyframes blink { 50% { opacity: 0.7; } }
+
+        /* 底部操作区 */
+        .action-area { padding: 15px; border-top: 1px solid #eee; background: white; }
+        #btn-plan {
+            width: 100%; padding: 12px; background: #3498db; color: white;
+            border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;
+            transition: all 0.3s;
+        }
+        #btn-plan:hover { background: #2980b9; }
+        
+        .alert-box {
+            margin-top: 10px; font-size: 12px; padding: 10px; border-radius: 6px; display: none;
+            border-left: 4px solid; line-height: 1.5;
+        }
+        .alert-info { background: #d1ecf1; border-color: #17a2b8; color: #0c5460; }
+        .alert-danger { background: #f8d7da; border-color: #dc3545; color: #721c24; }
+
+        /* --- 详情弹窗 (V0.8) --- */
+        #detail-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 340px; background: white; border-radius: 12px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2); z-index: 100;
+            display: none; overflow: hidden; animation: popIn 0.3s ease-out;
+        }
+        @keyframes popIn { from { opacity: 0; transform: translate(-50%, -45%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+        .modal-img { height: 120px; background: #ecf0f1; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+        .modal-content { padding: 20px; }
+        .close-modal { position: absolute; top: 10px; right: 10px; cursor: pointer; font-weight: bold; padding: 5px; }
+
+        /* --- 决策弹窗 (V0.9 新增) --- */
+        #decision-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 400px; background: white; border-radius: 12px; z-index: 200;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); display: none; overflow: hidden;
+            border-top: 5px solid #e67e22;
+        }
+        .decision-header { padding: 20px; text-align: center; background: #fff; }
+        .decision-header h3 { margin: 0; color: #d35400; }
+        .decision-body { padding: 0 20px 20px; display: flex; gap: 15px; }
+        .choice-card {
+            flex: 1; padding: 15px; border: 1px solid #ddd; border-radius: 8px;
+            cursor: pointer; transition: 0.2s; text-align: center;
+        }
+        .choice-card:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .choice-wait { border-color: #e67e22; background: #fff8f0; }
+        .choice-reroute { border-color: #27ae60; background: #eafaf1; }
+        .choice-title { font-weight: bold; margin-bottom: 5px; display: block; }
+        .choice-time { font-size: 24px; font-weight: bold; display: block; margin: 10px 0; }
+        .choice-desc { font-size: 12px; color: #666; }
+
+        /* --- 3D 标签 --- */
+        .label {
+            color: #2c3e50; padding: 4px 8px; background: rgba(255, 255, 255, 0.9);
+            border-radius: 4px; font-size: 12px; pointer-events: none; text-align: center;
+            border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: all 0.3s;
+        }
+        .service-label { color: #fff; background: #16a085; border:none; } 
+        .broken-label { background: #c0392b !important; color: white !important; border: 2px solid #fff !important; z-index: 100; }
+        .congested-label { background: #e67e22 !important; color: white !important; transform: scale(1.1); z-index: 90; }
+        .suggestion-label { background: #27ae60 !important; color: white !important; animation: bounce 2s infinite; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-5px);} 60% {transform: translateY(-3px);} }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- UI 面板 -->
+    <div id="ui-panel">
+        <div class="panel-header" id="panel-header">
+            <h2>🗺️ 智慧文旅 V0.9.5</h2>
+            <p>无障碍 | 气象感知 | 动态客流调控</p>
+        </div>
+
+        <!-- 1. 天气控制 -->
+        <div class="section">
+            <span class="section-title">🌤️ 实时气象</span>
+            <div class="weather-btn-group">
+                <div class="weather-btn active" onclick="setWeather('clear', this)"><span>☀️</span> 晴朗</div>
+                <div class="weather-btn" onclick="setWeather('hot', this)"><span>🔥</span> 酷暑</div>
+                <div class="weather-btn" onclick="setWeather('rain', this)"><span>🌧️</span> 暴雨</div>
+            </div>
+        </div>
+
+        <!-- 2. 无障碍控制 -->
+        <div class="section access-section">
+            <div class="toggle-row">
+                <div class="toggle-label">♿ 无障碍/亲子模式</div>
+                <label class="switch">
+                    <input type="checkbox" id="access-mode-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button class="fault-btn" id="btn-fault" onclick="toggleElevatorFault()">⚠️ 模拟电梯/设施故障</button>
+        </div>
+
+        <!-- 3. 客流调控 (新增) -->
+        <div class="section crowd-section">
+            <span class="section-title">👥 管理端：客流与应急</span>
+            <div class="crowd-ctrl-row">
+                <button class="surge-btn" id="btn-surge" onclick="toggleSurge()">🔥 模拟热门项目排队激增</button>
+            </div>
+            <div style="font-size:11px; color:#666;">区域拥堵指数: <span id="congestion-val">正常</span></div>
+            <div class="monitor-bar"><div class="monitor-fill" id="monitor-fill"></div></div>
+
+            <!-- 分流控制 -->
+            <div class="divert-control" id="divert-panel">
+                <span class="section-title" style="color:#d35400">📢 应急分流模拟</span>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px;">
+                    <span>自然客流</span>
+                    <span>强力引导</span>
+                </div>
+                <input type="range" id="divert-ratio" min="0" max="100" value="0" style="width:100%" oninput="updateDivert(this.value)">
+                <div style="font-size:11px; color:#d35400; margin-top:5px;">
+                    分流比例: <span id="divert-val">0</span>% (引导前往替代点)
+                </div>
+            </div>
+        </div>
+
+        <div class="list-header">
+            <span>景点列表</span>
+            <span style="cursor:pointer; color:#3498db;" onclick="clearSelection()">清空</span>
+        </div>
+        <div class="spots-list" id="spots-container">
+            <!-- 动态生成 -->
+        </div>
+
+        <div class="action-area">
+            <button id="btn-plan">🚀 智能规划路线</button>
+            <div class="alert-box alert-danger" id="alert-danger"></div>
+            <div class="alert-box alert-info" id="alert-info"></div>
+        </div>
+    </div>
+
+    <!-- 详情弹窗 (V0.8) -->
+    <div id="detail-modal">
+        <div class="close-modal" onclick="closeModal()">×</div>
+        <div class="modal-img" id="modal-img">🏛️</div>
+        <div class="modal-content">
+            <h3 style="margin:0" id="modal-title">景点名称</h3>
+            <div style="margin:10px 0" id="modal-tags"></div>
+            <p style="font-size:13px; color:#666;" id="modal-desc">介绍...</p>
+        </div>
+    </div>
+
+    <!-- 决策弹窗 (V0.9) -->
+    <div id="decision-modal">
+        <div class="decision-header">
+            <h3>⚠️ 检测到前方拥堵</h3>
+            <p>热门项目 <span id="modal-spot-name" style="font-weight:bold"></span> 当前排队过长</p>
+        </div>
+        <div class="decision-body">
+            <div class="choice-card choice-wait" onclick="userDecision('wait')">
+                <span class="choice-title">方案 A：继续等候</span>
+                <span class="choice-time" id="wait-time">45m</span>
+                <span class="choice-desc">坚持原计划，需忍受排队</span>
+            </div>
+            <div class="choice-card choice-reroute" onclick="userDecision('reroute')">
+                <span class="choice-title">方案 B：智能分流</span>
+                <span class="choice-time" id="reroute-time" style="color:#27ae60">15m</span>
+                <span class="choice-desc">前往同类景点 <span id="alt-spot-name" style="font-weight:bold"></span></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- 坐标定义 ---
+        const START_POS = { x: -8, z: 55 };
+        const EXIT_POS = { x: 8, z: 55 };
+
+        // --- 数据定义 (融合 V0.8 和 V0.9 属性) ---
+        // similarId: V0.9 新增，用于分流
+        const rawSpots = [
+            { id: 'A', name: '荷花渡', type: 'nature', exposure: 'outdoor', weatherSensitive: false, score: 8, time: 20, effort: 1, x: -40, z: -20, color: '#27ae60', accessType: 'flat', desc: '露天荷塘，平坦木栈道，轮椅友好。', similarId: 'F' },
+            { id: 'B', name: '古戏台', type: 'culture', exposure: 'outdoor', weatherSensitive: true, score: 7, time: 15, effort: 1, x: -20, z: -40, color: '#8e44ad', accessType: 'flat', desc: '历史悠久的露天戏台，广场平坦。', similarId: 'D' }, // 热门
+            { id: 'C', name: '观云峰', type: 'nature', exposure: 'outdoor', weatherSensitive: true, score: 10, time: 45, effort: 3, x: 0, z: -50, color: '#27ae60', accessType: 'stairs', desc: '景区最高点，需攀登百级石阶。', similarId: 'G' },
+            { id: 'D', name: '欢乐谷', type: 'culture', exposure: 'outdoor', weatherSensitive: false, score: 6, time: 60, effort: 2, x: 30, z: -30, color: '#d35400', accessType: 'slope', desc: '游乐设施区，部分路段为陡坡。', similarId: 'B' },
+            { id: 'E', name: '状元阁', type: 'culture', exposure: 'indoor', weatherSensitive: false, score: 9, time: 25, effort: 2, x: 40, z: 0, color: '#8e44ad', accessType: 'elevator', desc: '高层古建筑，配备观光电梯。', similarId: 'H' }, // 热门
+            { id: 'F', name: '翡翠湖', type: 'nature', exposure: 'outdoor', weatherSensitive: false, score: 8, time: 20, effort: 1, x: 20, z: 30, color: '#2980b9', accessType: 'flat', desc: '湖边栈道平缓，适合亲子漫步。', similarId: 'A' },
+            { id: 'G', name: '竹林径', type: 'nature', exposure: 'shaded', weatherSensitive: false, score: 7, time: 15, effort: 2, x: -20, z: 30, color: '#2ecc71', accessType: 'slope', desc: '竹林幽径，有一定坡度。', similarId: 'C' },
+            { id: 'H', name: '博物馆', type: 'culture', exposure: 'indoor', weatherSensitive: false, score: 9, time: 40, effort: 1, x: -40, z: 10, color: '#8e44ad', accessType: 'flat', desc: '全馆无障碍设计，设有专用电梯。', similarId: 'E' }
+        ];
+
+        const serviceSpots = [
+            { id: 'S1', name: '游客中心', x: -10, z: 0, type: 'service', isRest: true },
+            { id: 'S2', name: '山腰茶室', x: 20, z: -20, type: 'service', isRest: true }
+        ];
+
+        // --- 状态变量 ---
+        let spots = []; 
+        let currentWeather = 'clear'; 
+        let isAccessMode = false; 
+        let isElevatorBroken = false; 
+        
+        // V0.9 新增状态
+        let isSurgeActive = false; 
+        let divertRatio = 0;
+        let pendingRoute = []; // 暂存路线用于决策
+        let congestedSpotId = null;
+
+        let scene, camera, renderer, labelRenderer, controls;
+        let routeMesh, routeTexture, avatar;
+        let rainSystem, ambientLight, dirLight;
+        let raycaster, pointer;
+        let clickableObjects = [];
+        let labelObjects = {}; 
+        let currentCurve = null;
+        let isSimulating = false, simProgress = 0;
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            initData();
+            
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xeef2f5); 
+            scene.fog = new THREE.Fog(0xeef2f5, 60, 250);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 120, 150); camera.lookAt(0, 0, 0);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+            labelRenderer = new CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            container.appendChild(labelRenderer.domElement);
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.maxPolarAngle = Math.PI / 2 - 0.1;
+
+            // Lights
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.7); scene.add(ambientLight);
+            dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
+
+            // Interaction
+            raycaster = new THREE.Raycaster(); pointer = new THREE.Vector2();
+            window.addEventListener('pointerdown', onPointerDown);
+            window.addEventListener('resize', onWindowResize);
+
+            buildWorld();
+            createRainSystem();
+            createAvatar();
+            initUI(); 
+        }
+
+        function initData() {
+            spots = rawSpots.map(s => ({
+                ...s, 
+                queueTime: 0, // 实时排队时间
+                isCongested: false
+            }));
+        }
+
+        function buildWorld() {
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xe0e5e9, roughness: 0.8 }));
+            ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+            scene.add(new THREE.GridHelper(400, 40, 0xbdc3c7, 0xdfe6e9));
+
+            const startBox = new THREE.Mesh(new THREE.BoxGeometry(6,1,6), new THREE.MeshStandardMaterial({color:0x2ecc71}));
+            startBox.position.set(START_POS.x, 0.5, START_POS.z); scene.add(startBox);
+
+            const exitBox = new THREE.Mesh(new THREE.BoxGeometry(6,1,6), new THREE.MeshStandardMaterial({color:0xe74c3c}));
+            exitBox.position.set(EXIT_POS.x, 0.5, EXIT_POS.z); scene.add(exitBox);
+
+            spots.forEach(spot => {
+                let geo;
+                const height = spot.effort * 4; 
+                if (spot.type === 'nature') geo = new THREE.ConeGeometry(3.5, height * 2, 6);
+                else geo = new THREE.BoxGeometry(5, height * 1.5, 5);
+
+                const mat = new THREE.MeshStandardMaterial({ color: spot.color });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(spot.x, height, spot.z);
+                mesh.castShadow = true;
+                mesh.userData = { isSpot: true, spotId: spot.id };
+                scene.add(mesh);
+                clickableObjects.push(mesh);
+                
+                // 初始化标签
+                labelObjects[spot.id] = addLabel(mesh, spot.name, "加载中...", false);
+            });
+
+            serviceSpots.forEach(s => {
+                const geo = new THREE.CylinderGeometry(2, 2, 3, 8);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x16a085 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(s.x, 1.5, s.z);
+                scene.add(mesh);
+                addLabel(mesh, s.name, "♿ 无障碍/休息", true);
+            });
+
+            update3DLabels(); // 初始化标签内容
+        }
+
+        function addLabel(mesh, title, sub, isService=false) {
+            const div = document.createElement('div');
+            div.className = isService ? 'label service-label' : 'label';
+            div.innerHTML = `<b>${title}</b><br><span class="lbl-sub">${sub}</span>`;
+            const label = new CSS2DObject(div);
+            label.position.set(0, isService ? 4 : 8, 0);
+            mesh.add(label);
+            return div; 
+        }
+
+        // --- 核心逻辑：数字标牌同步 (融合 V0.8 故障与 V0.9 拥堵) ---
+        function update3DLabels() {
+            spots.forEach(s => {
+                const labelDiv = labelObjects[s.id];
+                if(!labelDiv) return;
+
+                // 优先级 1: 设备故障 (V0.8)
+                if (s.accessType === 'elevator' && isElevatorBroken) {
+                    labelDiv.className = 'label broken-label';
+                    labelDiv.innerHTML = `<b>${s.name}</b><br>⚠️ 电梯维修中`;
+                    return;
+                }
+
+                // 优先级 2: 严重拥堵 (V0.9)
+                if (s.isCongested) {
+                    labelDiv.className = 'label congested-label';
+                    const similarSpot = spots.find(sim => sim.id === s.similarId);
+                    labelDiv.innerHTML = `<b>${s.name}</b><br>🔥 排队 ${s.queueTime}m<br><span style="font-size:10px">建议去: ${similarSpot?.name}</span>`;
+                    
+                    // 联动：更新替代景点为推荐状态
+                    if (similarSpot && labelObjects[similarSpot.id]) {
+                        const simLabel = labelObjects[similarSpot.id];
+                        // 只有当替代点本身没有故障时才推荐
+                        if (!(similarSpot.accessType === 'elevator' && isElevatorBroken)) {
+                            simLabel.className = 'label suggestion-label';
+                            simLabel.innerHTML = `<b>${similarSpot.name}</b><br>💡 畅通 (省${s.queueTime - 10}m)`;
+                        }
+                    }
+                    return;
+                }
+
+                // 优先级 3: 正常状态 (恢复 V0.8 默认显示)
+                // 如果它不是被推荐的替代点，或者激增模式已关闭，则恢复正常
+                if (!labelDiv.classList.contains('suggestion-label') || !isSurgeActive) {
+                    let subText = s.exposure === 'indoor' ? '🏠 室内' : (s.exposure === 'shaded' ? '🌳 林荫' : '☀️ 露天');
+                    if(s.accessType === 'stairs') subText += ' | 🪜 阶梯';
+                    if(s.accessType === 'elevator') subText += ' | 🛗 电梯';
+                    
+                    labelDiv.className = 'label';
+                    labelDiv.innerHTML = `<b>${s.name}</b><br><span style="font-size:10px; opacity:0.8">${subText}</span>`;
+                }
+            });
+        }
+
+        // --- 核心逻辑：客流模拟 (V0.9) ---
+        window.toggleSurge = function() {
+            isSurgeActive = !isSurgeActive;
+            const btn = document.getElementById('btn-surge');
+            const panel = document.getElementById('divert-panel');
+            
+            if (isSurgeActive) {
+                btn.classList.add('active');
+                btn.innerHTML = "🔥 正在模拟激增 (点击停止)";
+                panel.classList.add('show');
+                updateCrowdData();
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = "🔥 模拟热门项目排队激增";
+                panel.classList.remove('show');
+                resetCrowdData();
+            }
+            updateSpotListUI();
+            update3DLabels();
+        };
+
+        window.updateDivert = function(val) {
+            divertRatio = val / 100;
+            document.getElementById('divert-val').innerText = val;
+            if (isSurgeActive) {
+                updateCrowdData();
+                updateSpotListUI();
+                update3DLabels();
+            }
+        };
+
+        function updateCrowdData() {
+            const rawSurgeQueue = 50; 
+            const effectiveQueue = Math.round(rawSurgeQueue * (1 - divertRatio * 0.8)); 
+
+            spots.forEach(s => {
+                // 假设 B(古戏台) 和 E(状元阁) 是热门
+                if (s.id === 'B' || s.id === 'E') {
+                    s.isCongested = effectiveQueue > 20; 
+                    s.queueTime = effectiveQueue;
+                } else {
+                    s.isCongested = false;
+                    s.queueTime = 0;
+                }
+            });
+            
+            const fill = document.getElementById('monitor-fill');
+            const txt = document.getElementById('congestion-val');
+            if (effectiveQueue > 30) {
+                fill.style.width = '90%'; fill.style.background = '#c0392b'; txt.innerText = "严重拥堵"; txt.style.color = '#c0392b';
+            } else if (effectiveQueue > 10) {
+                fill.style.width = '50%'; fill.style.background = '#f39c12'; txt.innerText = "客流较大"; txt.style.color = '#f39c12';
+            } else {
+                fill.style.width = '20%'; fill.style.background = '#2ecc71'; txt.innerText = "分流生效中"; txt.style.color = '#2ecc71';
+            }
+        }
+
+        function resetCrowdData() {
+            spots.forEach(s => { s.isCongested = false; s.queueTime = 0; });
+            document.getElementById('monitor-fill').style.width = '0%';
+            document.getElementById('congestion-val').innerText = "正常";
+        }
+
+        // --- UI 更新逻辑 (融合) ---
+        function updateSpotListUI() {
+            const container = document.getElementById('spots-container');
+            container.innerHTML = '';
+            spots.forEach(spot => {
+                let isDisabled = false;
+                let badges = '';
+                
+                // 天气检查
+                if (currentWeather === 'rain' && spot.weatherSensitive) {
+                    isDisabled = true; badges += '<span class="badge badge-closed">雨天关闭</span>';
+                } else if (currentWeather === 'hot' && spot.weatherSensitive && spot.name === '古戏台') {
+                    isDisabled = true; badges += '<span class="badge badge-closed">高温暂停</span>';
+                }
+
+                // 无障碍检查
+                if (isAccessMode) {
+                    if (spot.accessType === 'stairs') {
+                        isDisabled = true; badges += '<span class="badge badge-stairs">🚫仅楼梯</span>';
+                    }
+                    if (spot.accessType === 'elevator' && isElevatorBroken) {
+                        isDisabled = true; badges += '<span class="badge badge-closed">⚠️电梯故障</span>';
+                    }
+                }
+
+                // 拥堵检查 (V0.9)
+                if (spot.isCongested) {
+                    badges += `<span class="badge badge-queue">🔥排队${spot.queueTime}m</span>`;
+                }
+
+                // 属性徽章
+                if (spot.accessType === 'elevator') badges += ' <span class="badge badge-elevator">🛗</span>';
+                if (spot.exposure === 'indoor') badges += ' <span class="badge badge-indoor">内</span>';
+
+                const div = document.createElement('div');
+                div.className = `spot-item ${isDisabled ? 'disabled' : ''} ${spot.isCongested ? 'congested' : ''}`;
+                div.id = `item-${spot.id}`;
+                div.innerHTML = `
+                    <input type="checkbox" class="spot-checkbox" data-id="${spot.id}" ${isDisabled ? 'disabled' : ''}>
+                    <div class="spot-content" onclick="showDetail('${spot.id}')">
+                        <div class="spot-name">${spot.name}</div>
+                        <div class="spot-meta">${badges} <span>⏳${spot.time}m</span></div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // --- 核心算法：路径规划 (融合 V0.8 避险与 V0.9 决策) ---
+        function planRoute() {
+            const checkboxes = document.querySelectorAll('.spot-checkbox:checked');
+            let selectedIds = Array.from(checkboxes).map(cb => cb.dataset.id);
+            
+            // 1. 筛选与成本计算
+            let candidates = spots.filter(s => {
+                // 天气过滤
+                if (currentWeather === 'rain' && s.weatherSensitive) return false;
+                if (currentWeather === 'hot' && s.weatherSensitive && s.name === '古戏台') return false;
+                // 无障碍过滤
+                if (isAccessMode) {
+                    if (s.accessType === 'stairs') return false;
+                    if (s.accessType === 'elevator' && isElevatorBroken) return false;
+                }
+                return true;
+            });
+
+            // 2. 拥堵检测 (V0.9 逻辑)
+            // 检查用户选中的点中是否有严重拥堵
+            const routeCandidates = candidates.filter(s => selectedIds.includes(s.id));
+            const congestedNode = routeCandidates.find(s => s.isCongested && s.queueTime > 25);
+
+            if (congestedNode) {
+                // 触发决策弹窗，暂停
+                congestedSpotId = congestedNode.id;
+                pendingRoute = routeCandidates; 
+                showDecisionModal(congestedNode);
+                return; // 中断
+            }
+
+            // 3. 如果无拥堵或用户已决策，执行生成
+            generateAndDrawRoute(routeCandidates);
+        }
+
+        function showDecisionModal(spot) {
+            const modal = document.getElementById('decision-modal');
+            const similarSpot = spots.find(s => s.id === spot.similarId);
+            
+            document.getElementById('modal-spot-name').innerText = spot.name;
+            document.getElementById('wait-time').innerText = `${spot.time + spot.queueTime}m`;
+            
+            if(similarSpot) {
+                document.getElementById('alt-spot-name').innerText = similarSpot.name;
+                document.getElementById('reroute-time').innerText = `${similarSpot.time}m`;
+            }
+            modal.style.display = 'block';
+        }
+
+        window.userDecision = function(choice) {
+            document.getElementById('decision-modal').style.display = 'none';
+            let finalRoute = [...pendingRoute];
+            
+            if (choice === 'reroute') {
+                // 替换逻辑
+                const badSpotIndex = finalRoute.findIndex(s => s.id === congestedSpotId);
+                const badSpot = spots.find(s => s.id === congestedSpotId);
+                const goodSpot = spots.find(s => s.id === badSpot.similarId);
+                
+                if (badSpotIndex !== -1 && goodSpot) {
+                    // 检查替代点是否也挂了（比如电梯坏了）
+                    if (isAccessMode && goodSpot.accessType === 'elevator' && isElevatorBroken) {
+                        alert(`抱歉，替代方案 [${goodSpot.name}] 电梯也故障了，建议取消该行程。`);
+                        finalRoute.splice(badSpotIndex, 1); // 直接移除
+                    } else {
+                        finalRoute[badSpotIndex] = goodSpot; // 替换
+                        document.getElementById('alert-info').innerHTML = `✅ 已为您自动切换至 <b>${goodSpot.name}</b>，预计节省时间 <b>${badSpot.queueTime}分钟</b>。`;
+                        document.getElementById('alert-info').style.display = 'block';
+                    }
+                }
+            } else {
+                 document.getElementById('alert-info').innerHTML = `⚠️ 您选择了继续等待，请注意现场广播。`;
+                 document.getElementById('alert-info').style.display = 'block';
+            }
+            generateAndDrawRoute(finalRoute);
+        };
+
+        function generateAndDrawRoute(selectedSpots) {
+            // 路径优化 (TSP 近似)
+            let sorted = [];
+            let current = START_POS;
+            let remaining = [...selectedSpots];
+            
+            while(remaining.length > 0) {
+                let nearestIdx = -1;
+                let minD = Infinity;
+                remaining.forEach((s, i) => {
+                    const d = Math.hypot(s.x - current.x, s.z - current.z);
+                    if(d < minD) { minD = d; nearestIdx = i; }
+                });
+                sorted.push(remaining[nearestIdx]);
+                current = remaining[nearestIdx];
+                remaining.splice(nearestIdx, 1);
+            }
+
+            // 插入休息点 (V0.8 逻辑)
+            if (isAccessMode && sorted.length > 0) {
+                sorted = insertRestStops(sorted);
+            }
+
+            updateUIHighlights(sorted);
+            drawRoute(sorted);
+            startSimulation(sorted);
+        }
+
+        function insertRestStops(route) {
+            const newRoute = [];
+            const MAX_WALK_DIST = 40; 
+            let currentPos = START_POS;
+
+            for (let i = 0; i < route.length; i++) {
+                const target = route[i];
+                const dist = Math.hypot(target.x - currentPos.x, target.z - currentPos.z);
+                
+                if (dist > MAX_WALK_DIST) {
+                    let nearestSrv = null;
+                    let minSrvDist = Infinity;
+                    serviceSpots.forEach(srv => {
+                        const d = Math.hypot(srv.x - ((currentPos.x+target.x)/2), srv.z - ((currentPos.z+target.z)/2));
+                        if (d < minSrvDist) { minSrvDist = d; nearestSrv = srv; }
+                    });
+                    if (nearestSrv) newRoute.push({ ...nearestSrv, time: 10 });
+                }
+                newRoute.push(target);
+                currentPos = target;
+            }
+            return newRoute;
+        }
+
+        function drawRoute(spotList) {
+            if (routeMesh) scene.remove(routeMesh);
+            if (spotList.length === 0) return;
+
+            const points = [new THREE.Vector3(START_POS.x, 0.5, START_POS.z)];
+            spotList.forEach(s => points.push(new THREE.Vector3(s.x, 1, s.z)));
+            points.push(new THREE.Vector3(EXIT_POS.x, 0.5, EXIT_POS.z));
+
+            currentCurve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(currentCurve, 100, 0.8, 8, false); 
+            
+            let routeColor = '#2980b9';
+            if (isAccessMode) routeColor = '#16a085'; 
+            if (isElevatorBroken) routeColor = '#e67e22'; 
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = routeColor; ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#ffffff'; 
+            if(isAccessMode) { ctx.font = "40px Arial"; ctx.fillText("♿", 10, 45); } 
+            else { ctx.beginPath(); ctx.moveTo(10, 10); ctx.lineTo(50, 32); ctx.lineTo(10, 54); ctx.fill(); }
+
+            routeTexture = new THREE.CanvasTexture(canvas);
+            routeTexture.wrapS = THREE.RepeatWrapping;
+            routeTexture.wrapT = THREE.RepeatWrapping;
+            routeTexture.repeat.set(20, 1);
+
+            const material = new THREE.MeshBasicMaterial({ map: routeTexture, transparent: true, opacity: 0.9 });
+            routeMesh = new THREE.Mesh(geometry, material);
+            routeMesh.position.y = 0.5;
+            scene.add(routeMesh);
+        }
+
+        // --- 辅助功能 ---
+        function initUI() {
+            document.getElementById('access-mode-toggle').addEventListener('change', (e) => {
+                isAccessMode = e.target.checked;
+                updateSpotListUI();
+                planRoute();
+            });
+            document.getElementById('btn-plan').addEventListener('click', planRoute);
+            window.clearSelection = () => document.querySelectorAll('.spot-checkbox').forEach(cb => cb.checked = false);
+            window.showDetail = showDetail;
+            window.closeModal = closeModal;
+            updateSpotListUI();
+        }
+
+        function updateUIHighlights(route) {
+            document.querySelectorAll('.spot-item').forEach(el => el.classList.remove('in-route'));
+            route.forEach(s => {
+                const el = document.getElementById(`item-${s.id}`);
+                if(el) el.classList.add('in-route');
+            });
+            document.getElementById('alert-danger').style.display = 'none';
+        }
+
+        // 天气与故障模拟 (V0.8)
+        window.setWeather = function(type, btn) {
+            currentWeather = type;
+            document.querySelectorAll('.weather-btn').forEach(b => b.classList.remove('active', 'active-hot', 'active-rain'));
+            if(type === 'hot') btn.classList.add('active-hot');
+            else if(type === 'rain') btn.classList.add('active-rain');
+            else btn.classList.add('active');
+
+            if (type === 'rain') {
+                scene.fog.color.setHex(0xbdc3c7); scene.background.setHex(0xbdc3c7);
+                ambientLight.intensity = 0.4; dirLight.intensity = 0.4; rainSystem.visible = true;
+            } else if (type === 'hot') {
+                scene.fog.color.setHex(0xfff5e6); scene.background.setHex(0xfff5e6);
+                ambientLight.intensity = 0.9; dirLight.intensity = 1.2; dirLight.color.setHex(0xffecd1); rainSystem.visible = false;
+            } else {
+                scene.fog.color.setHex(0xeef2f5); scene.background.setHex(0xeef2f5);
+                ambientLight.intensity = 0.7; dirLight.intensity = 0.8; dirLight.color.setHex(0xffffff); rainSystem.visible = false;
+            }
+            updateSpotListUI();
+        };
+
+        window.toggleElevatorFault = function() {
+            isElevatorBroken = !isElevatorBroken;
+            const btn = document.getElementById('btn-fault');
+            if(isElevatorBroken) {
+                btn.classList.add('active');
+                btn.innerHTML = "🔥 故障生效中 (点击恢复)";
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = "⚠️ 模拟电梯/设施故障";
+            }
+            updateSpotListUI();
+            update3DLabels();
+            planRoute();
+        };
+
+        // 基础场景构建
+        function createRainSystem() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < 8000; i++) vertices.push(Math.random() * 300 - 150, Math.random() * 200, Math.random() * 300 - 150);
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            rainSystem = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.5, transparent: true, opacity: 0.6 }));
+            rainSystem.visible = false; scene.add(rainSystem);
+        }
+
+        function createAvatar() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4, 8), new THREE.MeshLambertMaterial({ color: 0xe67e22 }));
+            body.rotateX(Math.PI/2); body.position.y = 2;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(1.2), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+            head.position.set(0, 2, -1.5);
+            group.add(body); group.add(head);
+            group.position.set(START_POS.x, 0, START_POS.z);
+            group.visible = false; avatar = group; scene.add(avatar);
+        }
+
+        function startSimulation(spotList) {
+            if (!currentCurve || spotList.length === 0) return;
+            isSimulating = true; simProgress = 0; avatar.visible = true;
+        }
+
+        function onPointerDown(event) {
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(clickableObjects);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (object.userData.isSpot) showDetail(object.userData.spotId);
+            }
+        }
+
+        function showDetail(id) {
+            const spot = spots.find(s => s.id === id);
+            if (!spot) return;
+            const modal = document.getElementById('detail-modal');
+            document.getElementById('modal-title').innerText = spot.name;
+            document.getElementById('modal-desc').innerText = spot.desc || "暂无介绍";
+            document.getElementById('modal-img').innerText = spot.exposure === 'indoor' ? '🏠' : (spot.type === 'nature' ? '🌲' : '🏯');
+            
+            let tags = `<span style="background:#f0f2f5; padding:4px 8px; border-radius:4px; font-size:12px; margin-right:5px">评分 ${spot.score}</span>`;
+            if (spot.accessType === 'stairs') tags += '<span style="background:#ffebee; color:#c0392b; padding:4px 8px; border-radius:4px; font-size:12px">⚠️ 需爬楼</span>';
+            if (spot.accessType === 'elevator') tags += '<span style="background:#eaf6ff; color:#2980b9; padding:4px 8px; border-radius:4px; font-size:12px">✅ 有电梯</span>';
+            
+            document.getElementById('modal-tags').innerHTML = tags;
+            modal.style.display = 'block';
+        }
+        function closeModal() { document.getElementById('detail-modal').style.display = 'none'; }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            if (routeTexture) routeTexture.offset.x -= 0.01;
+
+            if (currentWeather === 'rain' && rainSystem) {
+                const positions = rainSystem.geometry.attributes.position.array;
+                for (let i = 1; i < positions.length; i += 3) {
+                    positions[i] -= 2; 
+                    if (positions[i] < 0) positions[i] = 200; 
+                }
+                rainSystem.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if (isSimulating && currentCurve) {
+                simProgress += 0.002;
+                if (simProgress > 1) simProgress = 0;
+                const point = currentCurve.getPointAt(simProgress);
+                avatar.position.copy(point);
+                avatar.position.y = 1;
+                const nextPoint = currentCurve.getPointAt(Math.min(simProgress + 0.01, 1));
+                avatar.lookAt(nextPoint);
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
